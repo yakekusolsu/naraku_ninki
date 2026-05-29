@@ -1637,8 +1637,8 @@
   const STORAGE_KEY = "naraku-awards-2026";
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const DEFAULT_VOTING_PERIOD = {
-    start: "2026-01-01",
-    end: "2026-12-31",
+    start: "",
+    end: "",
   };
 
   const appState = {
@@ -1650,6 +1650,7 @@
     comments: [],
     candidateQuery: "",
     votingPeriod: Object.assign({}, DEFAULT_VOTING_PERIOD),
+    votingPeriodConfigured: false,
     firebaseReady: false,
     unsubscribers: [],
     settings: {
@@ -1880,7 +1881,7 @@
       }
 
       if (!appState.currentUser) {
-        toast("ログインが必要です", "Discordログイン後にコメントできます。");
+        toast("ログインが必要です", "匿名ログイン後にコメントできます。");
         return;
       }
 
@@ -1940,7 +1941,13 @@
     const rawVotes = Array.isArray(store.votes) ? store.votes : [];
     appState.votes = rawVotes.filter(isValidVote);
     appState.comments = Array.isArray(store.comments) ? store.comments : DEMO_COMMENTS;
-    appState.votingPeriod = normalizeVotingPeriod(store.votingPeriod || appState.votingPeriod);
+    if (isValidVotingPeriod(store.votingPeriod)) {
+      appState.votingPeriod = normalizeVotingPeriod(store.votingPeriod);
+      appState.votingPeriodConfigured = true;
+    } else {
+      appState.votingPeriod = Object.assign({}, DEFAULT_VOTING_PERIOD);
+      appState.votingPeriodConfigured = false;
+    }
 
     if (rawVotes.length !== appState.votes.length) {
       writeStore({ votes: appState.votes });
@@ -1999,7 +2006,7 @@
       els.logoutBtn.hidden = false;
       els.userPill.hidden = false;
       els.userName.textContent = appState.currentUser.displayName;
-      els.userStatus.textContent = appState.firebaseReady ? "Discord connected" : "Demo Discord user";
+      els.userStatus.textContent = appState.firebaseReady ? "Anonymous connected" : "Demo anonymous user";
       els.userAvatar.src = appState.currentUser.photoURL;
       return;
     }
@@ -2097,12 +2104,14 @@
     const loggedIn = Boolean(appState.currentUser);
     const candidates = getFilteredCandidates();
 
-    if (!votingOpen) {
+    if (!appState.votingPeriodConfigured) {
+      els.voteNotice.textContent = "投票期間が未設定です。管理UIで期間を設定するまで投票できません。";
+    } else if (!votingOpen) {
       els.voteNotice.textContent = `投票期間外です。設定期間: ${formatVotingPeriod(
         appState.votingPeriod
       )}`;
     } else if (!loggedIn) {
-      els.voteNotice.textContent = "Discordログイン後、1時間に1度だけ投票できます。";
+      els.voteNotice.textContent = "匿名ログイン後、1時間に1度だけ投票できます。";
     } else if (cooldownRemaining > 0) {
       els.voteNotice.textContent = `次の投票まで ${formatDuration(
         cooldownRemaining
@@ -2124,10 +2133,12 @@
       const votes = getCandidateVoteTotal(appState.selectedCategory, candidate.id);
       const recentlyVoted = latestVote && latestVote.candidateId === candidate.id && cooldownRemaining > 0;
       const disabled = !loggedIn || !votingOpen || cooldownRemaining > 0;
-      const buttonLabel = !loggedIn
-        ? "Login Required"
+      const buttonLabel = !appState.votingPeriodConfigured
+        ? "期間未設定"
         : !votingOpen
         ? "期間外"
+        : !loggedIn
+        ? "Login Required"
         : cooldownRemaining > 0
         ? "Cooldown"
         : "投票する";
@@ -2233,7 +2244,7 @@
 
     if (!user) {
       els.profileName.textContent = "未ログイン";
-      els.profileDescription.textContent = "Discordログインで投票履歴とコメントが同期されます。";
+      els.profileDescription.textContent = "匿名ログインで投票履歴とコメントが同期されます。";
       els.profileAvatar.src = avatarSvg("Guest", ["#60708f", "#35e7ff"]);
       return;
     }
@@ -2270,22 +2281,22 @@
   async function login() {
     if (!window.NarakuFirebase || !window.NarakuFirebase.isConfigured()) {
       const demoUser = {
-        uid: "demo-discord-user",
-        displayName: "Discord Demo User",
+        uid: "demo-anonymous-user",
+        displayName: "匿名デモユーザー",
         photoURL: avatarSvg("Demo", ["#35e7ff", "#ff4fd8"]),
       };
       appState.currentUser = demoUser;
       writeStore({ currentUser: demoUser });
       renderAll();
-      toast("Demo Discord Login", "Firebase設定後はDiscord OAuthに切り替わります。");
+      toast("デモ匿名ログイン", "Firebase設定後は匿名Authに切り替わります。");
       return;
     }
 
     try {
-      const credential = await window.NarakuFirebase.signInWithDiscord();
+      const credential = await window.NarakuFirebase.signInAnonymously();
       appState.currentUser = normalizeFirebaseUser(credential.user);
       renderAll();
-      toast("Discord Login", "認証が完了しました。");
+      toast("匿名ログイン", "認証が完了しました。");
     } catch (error) {
       toast("ログインできませんでした", error.message || "Firebase設定を確認してください。");
     }
@@ -2304,7 +2315,12 @@
 
   async function voteForCandidate(candidateId) {
     if (!appState.currentUser) {
-      toast("ログインが必要です", "Discordログイン後に投票できます。");
+      toast("ログインが必要です", "匿名ログイン後に投票できます。");
+      return;
+    }
+
+    if (!appState.votingPeriodConfigured) {
+      toast("投票期間が未設定です", "管理UIで投票期間を設定してください。");
       return;
     }
 
@@ -2350,6 +2366,10 @@
         throw new Error("投票は1時間に1度までです。");
       }
 
+      if (!appState.votingPeriodConfigured) {
+        throw new Error("投票期間が未設定です。");
+      }
+
       if (!isVotingOpen()) {
         throw new Error("投票期間外です。");
       }
@@ -2377,6 +2397,14 @@
   function createDemoVote(categoryId, candidateId) {
     const user = appState.currentUser;
     const cooldownRemaining = getVoteCooldownRemaining();
+
+    if (!appState.votingPeriodConfigured) {
+      throw new Error("投票期間が未設定です。");
+    }
+
+    if (!isVotingOpen()) {
+      throw new Error("投票期間外です。");
+    }
 
     if (cooldownRemaining > 0) {
       throw new Error(`投票は1時間に1度までです。次の投票まで ${formatDuration(cooldownRemaining)}。`);
@@ -2485,7 +2513,11 @@
     const unsubscribe = firestore.onSnapshot(periodRef, (snapshot) => {
       if (snapshot.exists()) {
         appState.votingPeriod = normalizeVotingPeriod(snapshot.data());
+        appState.votingPeriodConfigured = true;
         writeStore({ votingPeriod: appState.votingPeriod });
+      } else {
+        appState.votingPeriod = Object.assign({}, DEFAULT_VOTING_PERIOD);
+        appState.votingPeriodConfigured = false;
       }
       renderAll();
     });
@@ -2494,7 +2526,13 @@
 
   function loadVotingPeriod() {
     const store = readStore();
-    appState.votingPeriod = normalizeVotingPeriod(store.votingPeriod || DEFAULT_VOTING_PERIOD);
+    if (isValidVotingPeriod(store.votingPeriod)) {
+      appState.votingPeriod = normalizeVotingPeriod(store.votingPeriod);
+      appState.votingPeriodConfigured = true;
+    } else {
+      appState.votingPeriod = Object.assign({}, DEFAULT_VOTING_PERIOD);
+      appState.votingPeriodConfigured = false;
+    }
   }
 
   async function saveVotingPeriod(period) {
@@ -2526,6 +2564,7 @@
     }
 
     appState.votingPeriod = next;
+    appState.votingPeriodConfigured = true;
     writeStore({ votingPeriod: next });
     renderAll();
   }
@@ -2546,6 +2585,15 @@
 
   function renderVotingPeriod() {
     const period = appState.votingPeriod;
+
+    if (!appState.votingPeriodConfigured) {
+      els.votingPeriodLabel.textContent = "未設定";
+      els.periodStatus.textContent = "UNSET";
+      els.remainingLabel.textContent = "投票期間未設定";
+      els.remainingTime.textContent = "--:--:--";
+      return;
+    }
+
     const now = Date.now();
     const start = getPeriodStartDate(period).getTime();
     const end = getPeriodEndDate(period).getTime();
@@ -2574,6 +2622,11 @@
   }
 
   function updateCountdown() {
+    if (!appState.votingPeriodConfigured) {
+      renderVotingPeriod();
+      return;
+    }
+
     const now = Date.now();
     const start = getPeriodStartDate(appState.votingPeriod).getTime();
     const end = getPeriodEndDate(appState.votingPeriod).getTime();
@@ -2768,6 +2821,10 @@
   }
 
   function isVotingOpen() {
+    if (!appState.votingPeriodConfigured) {
+      return false;
+    }
+
     const period = appState.votingPeriod;
     const now = Date.now();
     return now >= getPeriodStartDate(period).getTime() && now <= getPeriodEndDate(period).getTime();
@@ -2775,8 +2832,8 @@
 
   function normalizeVotingPeriod(period) {
     const next = {
-      start: normalizeDateInput(period && period.start, DEFAULT_VOTING_PERIOD.start),
-      end: normalizeDateInput(period && period.end, DEFAULT_VOTING_PERIOD.end),
+      start: normalizeDateInput(period && period.start, ""),
+      end: normalizeDateInput(period && period.end, ""),
     };
 
     if (!isValidVotingPeriod(next)) {
@@ -2819,6 +2876,10 @@
   }
 
   function formatVotingPeriod(period) {
+    if (!isValidVotingPeriod(period)) {
+      return "未設定";
+    }
+
     return `${period.start.replace(/-/g, "/")} - ${period.end.replace(/-/g, "/")}`;
   }
 
@@ -2902,10 +2963,11 @@
   }
 
   function normalizeFirebaseUser(user) {
+    const shortId = user.uid ? user.uid.slice(0, 6).toUpperCase() : "GUEST";
     return {
       uid: user.uid,
-      displayName: user.displayName || user.email || "Discord User",
-      photoURL: user.photoURL || avatarSvg(user.displayName || "Discord", ["#35e7ff", "#8f63ff"]),
+      displayName: user.displayName || `匿名ユーザー ${shortId}`,
+      photoURL: user.photoURL || avatarSvg(`匿名${shortId}`, ["#35e7ff", "#8f63ff"]),
       email: user.email || "",
     };
   }
