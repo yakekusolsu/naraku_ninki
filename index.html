@@ -28,6 +28,429 @@
         <div class="loader-percent" id="loaderPercent">0%</div>
       </div>
     </div>
+    <script>
+      (function () {
+        "use strict";
+
+        var screen = document.getElementById("loadingScreen");
+        var bar = document.getElementById("loaderBar");
+        var percent = document.getElementById("loaderPercent");
+        var progress = 0;
+        var timer = 0;
+        var finished = false;
+
+        function setProgress(value) {
+          progress = Math.max(0, Math.min(100, value));
+          if (bar) {
+            bar.style.width = progress + "%";
+          }
+          if (percent) {
+            percent.textContent = Math.round(progress) + "%";
+          }
+        }
+
+        function start() {
+          if (timer || finished || !screen) {
+            return;
+          }
+
+          timer = window.setInterval(function () {
+            setProgress(Math.min(94, progress + Math.floor(Math.random() * 9) + 4));
+            if (progress >= 94) {
+              window.clearInterval(timer);
+              timer = 0;
+            }
+          }, 90);
+        }
+
+        function complete() {
+          if (finished || !screen) {
+            return;
+          }
+
+          finished = true;
+          if (timer) {
+            window.clearInterval(timer);
+            timer = 0;
+          }
+          setProgress(100);
+          window.setTimeout(function () {
+            screen.classList.add("is-hidden");
+          }, 280);
+        }
+
+        window.NarakuLoader = {
+          start: start,
+          complete: complete,
+        };
+
+        start();
+        window.setTimeout(complete, 7000);
+      })();
+    </script>
+
+    <canvas id="particleCanvas" aria-hidden="true"></canvas>
+    <div class="ambient ambient-a" aria-hidden="true"></div>
+    <div class="ambient ambient-b" aria-hidden="true"></div>
+    <div class="scanlines" aria-hidden="true"></div>
+
+    <button
+      class="mobile-menu"
+      id="mobileMenu"
+      type="button"
+      aria-label="メニューを開く"
+      aria-expanded="false"
+    >
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <aside class="sidebar" id="sidebar" aria-label="メインナビゲーション">
+      <div class="brand">
+        <div class="brand-mark">N</div>
+        <div>
+          <p>NARAKU</p>
+          <span>AWARDS 2026</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-page="home" type="button">
+          <span class="nav-icon">⌂</span>
+          <span class="nav-label">ホーム</span>
+        </button>
+        <button class="nav-item" data-page="vote" type="button">
+          <span class="nav-icon">◆</span>
+          <span class="nav-label">投票</span>
+        </button>
+        <button class="nav-item" data-page="ranking" type="button">
+          <span class="nav-icon">#</span>
+          <span class="nav-label">ランキング</span>
+        </button>
+        <button class="nav-item" data-page="categories" type="button">
+          <span class="nav-icon">▦</span>
+          <span class="nav-label">部門一覧</span>
+        </button>
+        <button class="nav-item" data-page="profile" type="button">
+          <span class="nav-icon">◉</span>
+          <span class="nav-label">マイページ</span>
+        </button>
+        <button class="nav-item" data-page="settings" type="button">
+          <span class="nav-icon">⚙</span>
+          <span class="nav-label">設定</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-status">
+        <span class="status-dot"></span>
+        <div>
+          <strong id="connectionState">DEMO ONLINE</strong>
+          <small>Realtime channel</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="app-shell" id="appShell">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">第一回奈落鯖人気投票</span>
+          <h1 id="pageTitle">ホーム</h1>
+        </div>
+        <div class="auth-panel">
+          <div class="user-pill" id="userPill" hidden>
+            <img id="userAvatar" alt="" />
+            <div>
+              <strong id="userName">Guest</strong>
+              <span id="userStatus">Discord connected</span>
+            </div>
+          </div>
+          <button class="btn btn-ghost" id="logoutBtn" type="button" hidden>
+            ログアウト
+          </button>
+          <button class="btn btn-primary" id="loginBtn" type="button">
+            Discord Login
+          </button>
+        </div>
+      </header>
+
+      <section class="page active" id="page-home" data-page-title="ホーム">
+        <div class="hero">
+          <div class="hero-content reveal">
+            <span class="hero-kicker">NARAKU SERVER COMMUNITY AWARDS</span>
+            <h2>奈落鯖</h2>
+            <h2>人気投票</h2>
+            <p>
+              奈落鯖の頂点を決めるリアルタイム投票システム。
+            </p>
+            <div class="hero-actions">
+              <button class="btn btn-primary btn-large" data-jump="vote" type="button">
+                今すぐ投票
+              </button>
+              <button
+                class="btn btn-secondary btn-large"
+                data-jump="ranking"
+                type="button"
+              >
+                ランキングを見る
+              </button>
+            </div>
+          </div>
+
+          <div class="hero-orb reveal delay-1" aria-hidden="true">
+            <div class="core-orbit orbit-a"></div>
+            <div class="core-orbit orbit-b"></div>
+            <div class="core-orbit orbit-c"></div>
+            <div class="core-center">
+              <span>N</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card reveal delay-1">
+            <span>Total Votes</span>
+            <strong id="totalVotes">0</strong>
+            <small>全カテゴリ累計</small>
+          </article>
+          <article class="stat-card reveal delay-2">
+            <span>Active Users</span>
+            <strong id="activeUsers">0</strong>
+            <small>投票参加者</small>
+          </article>
+          <article class="stat-card reveal delay-3">
+            <span>Remaining Time</span>
+            <strong id="remainingTime">--:--:--</strong>
+            <small id="remainingLabel">投票終了まで</small>
+          </article>
+          <article class="stat-card reveal delay-3">
+            <span>Voting Period</span>
+            <strong id="periodStatus">READY</strong>
+            <small id="votingPeriodLabel">----/--/-- - ----/--/--</small>
+          </article>
+        </div>
+
+        <section class="panel reveal">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Featured Categories</span>
+              <h3>注目部門</h3>
+            </div>
+            <button class="text-link" data-jump="categories" type="button">
+              すべて表示
+            </button>
+          </div>
+          <div class="category-grid compact" id="featuredCategories"></div>
+        </section>
+      </section>
+
+      <section class="page" id="page-vote" data-page-title="投票">
+        <section class="panel reveal">
+          <div class="section-heading with-controls">
+            <div>
+              <span class="eyebrow">Voting Terminal</span>
+              <h3>投票カテゴリー</h3>
+            </div>
+            <div class="category-tabs" id="categoryTabs"></div>
+          </div>
+          <div class="notice" id="voteNotice">
+            Discordログイン後、最大6回まで投票できます。
+          </div>
+          <div class="vote-tools">
+            <input
+              class="search-control"
+              id="candidateSearch"
+              type="search"
+              placeholder="ユーザー名・表示名・IDで検索"
+              aria-label="候補者検索"
+            />
+            <span class="candidate-count" id="candidateCount">0 users</span>
+          </div>
+          <div class="candidate-grid" id="candidateGrid"></div>
+        </section>
+      </section>
+
+      <section class="page" id="page-ranking" data-page-title="ランキング">
+        <section class="panel reveal">
+          <div class="section-heading with-controls">
+            <div>
+              <span class="eyebrow">Realtime Leaderboard</span>
+              <h3>ランキング</h3>
+            </div>
+            <select class="select-control" id="rankingCategory" aria-label="ランキング部門">
+            </select>
+          </div>
+          <div class="leaderboard" id="leaderboard"></div>
+        </section>
+      </section>
+
+      <section class="page" id="page-categories" data-page-title="部門一覧">
+        <section class="panel reveal">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Award Categories</span>
+              <h3>部門一覧</h3>
+            </div>
+          </div>
+          <div class="category-grid" id="categoryGrid"></div>
+        </section>
+      </section>
+
+      <section class="page" id="page-profile" data-page-title="マイページ">
+        <section class="profile-layout">
+          <article class="profile-card reveal">
+            <div class="profile-avatar-wrap">
+              <img id="profileAvatar" alt="" />
+            </div>
+            <span class="eyebrow">My Status</span>
+            <h3 id="profileName">未ログイン</h3>
+            <p id="profileDescription">
+              Discordログインで投票履歴とコメントが同期されます。
+            </p>
+            <button class="btn btn-primary" id="profileLoginBtn" type="button">
+              Discord Login
+            </button>
+          </article>
+
+          <article class="panel reveal delay-1">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">My Votes</span>
+                <h3>投票履歴</h3>
+              </div>
+            </div>
+            <div class="history-list" id="voteHistory"></div>
+          </article>
+        </section>
+
+        <section class="panel reveal">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">Neon Comments</span>
+              <h3>応援コメント</h3>
+            </div>
+          </div>
+          <form class="comment-form" id="commentForm">
+            <textarea
+              id="commentInput"
+              maxlength="180"
+              placeholder="奈落鯖へのコメントを入力..."
+              aria-label="コメント"
+            ></textarea>
+            <button class="btn btn-primary" type="submit">送信</button>
+          </form>
+          <div class="comments-cloud" id="commentsCloud"></div>
+        </section>
+      </section>
+
+      <section class="page" id="page-settings" data-page-title="設定">
+        <section class="panel reveal">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">System Preferences</span>
+              <h3>設定</h3>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label class="setting-row">
+              <span>
+                <strong>パーティクル背景</strong>
+                <small>低スペック端末ではオフにできます。</small>
+              </span>
+              <input id="particlesToggle" type="checkbox" checked />
+            </label>
+            <label class="setting-row">
+              <span>
+                <strong>システム演出</strong>
+                <small>ランダムなコア演出を表示します。</small>
+              </span>
+              <input id="effectsToggle" type="checkbox" checked />
+            </label>
+            <label class="setting-row">
+              <span>
+                <strong>Firebase Mode</strong>
+                <small id="firebaseModeLabel">Demo storage active</small>
+              </span>
+              <input type="checkbox" disabled />
+            </label>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+    <div class="admin-overlay" id="adminOverlay" aria-hidden="true">
+      <form class="admin-panel" id="adminForm">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">Admin Console</span>
+            <h3>投票期間設定</h3>
+          </div>
+          <button class="admin-close" id="adminCloseBtn" type="button" aria-label="閉じる">
+            ×
+          </button>
+        </div>
+        <div class="admin-grid">
+          <label>
+            <span>開始日</span>
+            <input id="adminStartDate" type="date" required />
+          </label>
+          <label>
+            <span>終了日</span>
+            <input id="adminEndDate" type="date" required />
+          </label>
+        </div>
+        <p class="admin-status" id="adminStatus">投票期間を設定してください。</p>
+        <div class="admin-actions">
+          <button class="btn btn-primary" type="submit">保存</button>
+          <button class="btn btn-danger" id="adminResetBtn" type="button">ALL RESET</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="system-overlay" id="systemOverlay" aria-hidden="true">
+      <div class="system-box">
+        <span id="systemCode">SYSTEM ERROR</span>
+        <strong id="systemTitle">NARAKU CORE CONNECTED</strong>
+        <small>signal verified / channel encrypted</small>
+      </div>
+    </div>
+
+    <script src="firebase.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="第一回奈落鯖人気投票 - 奈落鯖アワード2026"
+    />
+    <title>第一回奈落鯖人気投票</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Orbitron:wght@600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="loading-screen" id="loadingScreen" aria-live="polite">
+      <div class="loader-core">
+        <div class="loader-ring"></div>
+        <div class="loader-logo glitch" data-text="NARAKU">NARAKU</div>
+        <div class="loader-sub">CORE INITIALIZING</div>
+        <div class="loader-bar">
+          <span id="loaderBar"></span>
+        </div>
+        <div class="loader-percent" id="loaderPercent">0%</div>
+      </div>
+    </div>
 
     <canvas id="particleCanvas" aria-hidden="true"></canvas>
     <div class="ambient ambient-a" aria-hidden="true"></div>
