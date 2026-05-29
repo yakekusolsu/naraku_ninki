@@ -25,17 +25,17 @@
     },
     {
       id: "vc",
-      name: "VC王",
+      name: "神対応賞",
       icon: "◌",
       accent: "#47ffb5",
-      description: "ボイスチャンネルを支配するトークの覇者。",
+      description: "初心者支援、相談対応、優しさなどで評価された人物。",
     },
     {
       id: "demon",
-      name: "魔王賞",
+      name: "新星賞",
       icon: "◆",
       accent: "#8f63ff",
-      description: "圧倒的な存在感で奈落を統べるカリスマ枠。",
+      description: "最近現れたにも関わらず一気に知名度を上げた新人。",
     },
   ];
 
@@ -1622,19 +1622,21 @@
       id: "c-2",
       userId: "demo-luna",
       displayName: "Luna",
-      text: "今年の魔王賞、誰が取るか本当に読めない。",
+      text: "今回の新星賞、誰が取るか本当に読めない。",
       createdAt: Date.now() - 90000,
     },
     {
       id: "c-3",
       userId: "demo-kuro",
       displayName: "Kuro",
-      text: "VC王は深夜勢が強すぎる。",
+      text: "神対応賞は深夜勢が強すぎる。",
       createdAt: Date.now() - 30000,
     },
   ];
 
   const STORAGE_KEY = "naraku-awards-2026";
+  const DISCORD_API_BASE = "https://discord.com/api";
+  const DISCORD_OAUTH_STATE_KEY = "discordOAuthState";
   const ONE_HOUR_MS = 60 * 60 * 1000;
   const DEFAULT_VOTING_PERIOD = {
     start: "",
@@ -1677,6 +1679,7 @@
     setupCountdown();
     setupRandomEffects();
     await setupFirebase();
+    await completeDiscordLoginFromRedirect();
   }
 
   function cacheElements() {
@@ -1881,14 +1884,14 @@
       }
 
       if (!appState.currentUser) {
-        toast("ログインが必要です", "匿名ログイン後にコメントできます。");
+        toast("ログインが必要です", "Discordログイン後にコメントできます。");
         return;
       }
 
       try {
         await createComment(text);
         els.commentInput.value = "";
-        toast("コメント送信完了", "ネオンカードに反映されました。");
+        toast("コメント送信完了", "カードに反映されました。");
       } catch (error) {
         toast("送信できませんでした", error.message || "もう一度お試しください。");
       }
@@ -1915,7 +1918,8 @@
       els.firebaseModeLabel.textContent = "Firestore realtime active";
 
       const unsubscribeAuth = await firebase.onAuthChanged(async (user) => {
-        appState.currentUser = user ? normalizeFirebaseUser(user) : null;
+        const discordProfile = getStoredDiscordProfile();
+        appState.currentUser = user && discordProfile ? normalizeFirebaseUser(user, discordProfile) : null;
         if (appState.currentUser) {
           await upsertUser(appState.currentUser);
         }
@@ -2006,7 +2010,7 @@
       els.logoutBtn.hidden = false;
       els.userPill.hidden = false;
       els.userName.textContent = appState.currentUser.displayName;
-      els.userStatus.textContent = appState.firebaseReady ? "Anonymous connected" : "Demo anonymous user";
+      els.userStatus.textContent = appState.firebaseReady ? "Discord connected" : "Demo Discord user";
       els.userAvatar.src = appState.currentUser.photoURL;
       return;
     }
@@ -2111,7 +2115,7 @@
         appState.votingPeriod
       )}`;
     } else if (!loggedIn) {
-      els.voteNotice.textContent = "匿名ログイン後、1時間に1度だけ投票できます。";
+      els.voteNotice.textContent = "Discordログイン後、1時間に1度だけ投票できます。";
     } else if (cooldownRemaining > 0) {
       els.voteNotice.textContent = `次の投票まで ${formatDuration(
         cooldownRemaining
@@ -2244,7 +2248,7 @@
 
     if (!user) {
       els.profileName.textContent = "未ログイン";
-      els.profileDescription.textContent = "匿名ログインで投票履歴とコメントが同期されます。";
+      els.profileDescription.textContent = "Discordログインで投票履歴とコメントが同期されます。";
       els.profileAvatar.src = avatarSvg("Guest", ["#60708f", "#35e7ff"]);
       return;
     }
@@ -2281,25 +2285,121 @@
   async function login() {
     if (!window.NarakuFirebase || !window.NarakuFirebase.isConfigured()) {
       const demoUser = {
-        uid: "demo-anonymous-user",
-        displayName: "匿名デモユーザー",
+        uid: "demo-discord-user",
+        displayName: "Discord Demo User",
         photoURL: avatarSvg("Demo", ["#35e7ff", "#ff4fd8"]),
+        discordId: "demo-discord",
+        discordUsername: "demo_user",
       };
       appState.currentUser = demoUser;
       writeStore({ currentUser: demoUser });
       renderAll();
-      toast("デモ匿名ログイン", "Firebase設定後は匿名Authに切り替わります。");
+      toast("Demo Discord Login", "Firebaseでは匿名Authとして扱われます。");
+      return;
+    }
+
+    if (!isWebProtocol()) {
+      toast("Discordログイン不可", "Discord OAuthはGitHub PagesなどのHTTPS上で実行してください。");
+      return;
+    }
+
+    beginDiscordLogin();
+  }
+
+  function beginDiscordLogin() {
+    const state = createRandomState();
+    writeStore({ [DISCORD_OAUTH_STATE_KEY]: state });
+
+    const params = new URLSearchParams({
+      client_id: window.NarakuFirebase.discordClientId,
+      redirect_uri: getDiscordRedirectUri(),
+      response_type: "token",
+      scope: "identify",
+      state,
+    });
+
+    window.location.assign(`https://discord.com/oauth2/authorize?${params.toString()}`);
+  }
+
+  async function completeDiscordLoginFromRedirect() {
+    const params = parseHashParams();
+
+    if (!params.access_token && !params.error) {
+      return;
+    }
+
+    clearUrlHash();
+
+    if (params.error) {
+      toast("Discord Login", params.error_description || "Discordログインがキャンセルされました。");
+      return;
+    }
+
+    const store = readStore();
+
+    if (!params.state || params.state !== store[DISCORD_OAUTH_STATE_KEY]) {
+      writeStore({ [DISCORD_OAUTH_STATE_KEY]: null });
+      toast("Discord Login", "ログイン状態の検証に失敗しました。もう一度お試しください。");
       return;
     }
 
     try {
-      const credential = await window.NarakuFirebase.signInAnonymously();
-      appState.currentUser = normalizeFirebaseUser(credential.user);
+      const profile = await fetchDiscordProfile(params.access_token);
+      writeStore({
+        discordProfile: profile,
+        currentUser: null,
+        [DISCORD_OAUTH_STATE_KEY]: null,
+      });
+
+      if (appState.firebaseReady) {
+        const credential = await window.NarakuFirebase.signInAnonymously();
+        appState.currentUser = normalizeFirebaseUser(credential.user, profile);
+        await upsertUser(appState.currentUser);
+      } else {
+        appState.currentUser = {
+          uid: `demo-discord-${profile.id}`,
+          displayName: profile.displayName,
+          photoURL: profile.photoURL,
+          discordId: profile.id,
+          discordUsername: profile.username,
+        };
+        writeStore({ currentUser: appState.currentUser });
+      }
+
       renderAll();
-      toast("匿名ログイン", "認証が完了しました。");
+      toast("Discord Login", "Firebase匿名Authで接続しました。");
     } catch (error) {
-      toast("ログインできませんでした", error.message || "Firebase設定を確認してください。");
+      writeStore({ [DISCORD_OAUTH_STATE_KEY]: null });
+      toast("ログインできませんでした", error.message || "Discord認証を確認してください。");
     }
+  }
+
+  async function fetchDiscordProfile(accessToken) {
+    const response = await fetch(`${DISCORD_API_BASE}/users/@me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Discordプロフィールを取得できませんでした。");
+    }
+
+    return normalizeDiscordProfile(await response.json());
+  }
+
+  function normalizeDiscordProfile(profile) {
+    const displayName = profile.global_name || profile.username || "Discord User";
+    const photoURL = profile.avatar
+      ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png?size=128`
+      : avatarSvg(displayName, ["#5865f2", "#35e7ff"]);
+
+    return {
+      id: profile.id,
+      username: profile.username || displayName,
+      displayName,
+      photoURL,
+    };
   }
 
   async function logout() {
@@ -2308,14 +2408,14 @@
     }
 
     appState.currentUser = null;
-    writeStore({ currentUser: null });
+    writeStore({ currentUser: null, discordProfile: null, [DISCORD_OAUTH_STATE_KEY]: null });
     renderAll();
     toast("ログアウトしました", "またいつでも投票できます。");
   }
 
   async function voteForCandidate(candidateId) {
     if (!appState.currentUser) {
-      toast("ログインが必要です", "匿名ログイン後に投票できます。");
+      toast("ログインが必要です", "Discordログイン後に投票できます。");
       return;
     }
 
@@ -2377,6 +2477,8 @@
       transaction.set(voteRef, {
         userId: user.uid,
         userName: user.displayName,
+        discordId: user.discordId || "",
+        discordUsername: user.discordUsername || "",
         categoryId,
         candidateId,
         candidateName: getCandidate(candidateId).username,
@@ -2387,6 +2489,8 @@
         {
           displayName: user.displayName,
           photoURL: user.photoURL,
+          discordId: user.discordId || "",
+          discordUsername: user.discordUsername || "",
           lastVoteAt: firestore.serverTimestamp(),
         },
         { merge: true }
@@ -2414,6 +2518,8 @@
       id: `${user.uid}_${Date.now()}`,
       userId: user.uid,
       userName: user.displayName,
+      discordId: user.discordId || "",
+      discordUsername: user.discordUsername || "",
       categoryId,
       candidateId,
       candidateName: getCandidate(candidateId).username,
@@ -2437,6 +2543,8 @@
           userId: user.uid,
           displayName: user.displayName,
           avatar: user.photoURL,
+          discordId: user.discordId || "",
+          discordUsername: user.discordUsername || "",
           text,
           createdAt: firestore.serverTimestamp(),
         }
@@ -2449,6 +2557,8 @@
       userId: user.uid,
       displayName: user.displayName,
       avatar: user.photoURL,
+      discordId: user.discordId || "",
+      discordUsername: user.discordUsername || "",
       text,
       createdAt: Date.now(),
     };
@@ -2466,6 +2576,8 @@
       {
         displayName: user.displayName,
         photoURL: user.photoURL,
+        discordId: user.discordId || "",
+        discordUsername: user.discordUsername || "",
         lastSeenAt: firestore.serverTimestamp(),
       },
       { merge: true }
@@ -2820,6 +2932,47 @@
     return CATEGORIES.find((category) => category.id === id) || CATEGORIES[0];
   }
 
+  function parseHashParams() {
+    const hash = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    return Object.fromEntries(new URLSearchParams(hash));
+  }
+
+  function clearUrlHash() {
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    } else {
+      window.location.hash = "";
+    }
+  }
+
+  function getDiscordRedirectUri() {
+    const pathname = window.location.pathname.endsWith("/index.html")
+      ? window.location.pathname.replace(/index\.html$/, "")
+      : window.location.pathname;
+    return `${window.location.origin}${pathname}`;
+  }
+
+  function getStoredDiscordProfile() {
+    const profile = readStore().discordProfile;
+    return profile && profile.id ? profile : null;
+  }
+
+  function createRandomState() {
+    if (window.crypto && window.crypto.getRandomValues) {
+      const values = new Uint32Array(4);
+      window.crypto.getRandomValues(values);
+      return Array.from(values, (value) => value.toString(16).padStart(8, "0")).join("");
+    }
+
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function isWebProtocol() {
+    return window.location.protocol === "https:" || window.location.protocol === "http:";
+  }
+
   function isVotingOpen() {
     if (!appState.votingPeriodConfigured) {
       return false;
@@ -2962,12 +3115,17 @@
     return String(value || "").toLocaleLowerCase("ja-JP");
   }
 
-  function normalizeFirebaseUser(user) {
+  function normalizeFirebaseUser(user, discordProfile) {
+    const profile = discordProfile || getStoredDiscordProfile();
     const shortId = user.uid ? user.uid.slice(0, 6).toUpperCase() : "GUEST";
     return {
       uid: user.uid,
-      displayName: user.displayName || `匿名ユーザー ${shortId}`,
-      photoURL: user.photoURL || avatarSvg(`匿名${shortId}`, ["#35e7ff", "#8f63ff"]),
+      displayName: profile ? profile.displayName : user.displayName || `Discord User ${shortId}`,
+      photoURL: profile
+        ? profile.photoURL
+        : user.photoURL || avatarSvg(`Discord${shortId}`, ["#5865f2", "#35e7ff"]),
+      discordId: profile ? profile.id : "",
+      discordUsername: profile ? profile.username : "",
       email: user.email || "",
     };
   }
