@@ -72,25 +72,14 @@
     return state.loading;
   }
 
-  async function signInWithDiscord() {
+  async function signInAnonymously() {
     await loadFirebase();
 
     if (!state.configured) {
       throw new Error("Firebase is not configured. Demo login will be used.");
     }
 
-    // TODO: In Firebase Authentication, configure the Discord provider as oidc.discord.
-    // Discord client id for that provider: 1509938166721806387
-    // Add the matching Discord OAuth client secret in the Firebase console.
-    const provider = new state.modules.auth.OAuthProvider("oidc.discord");
-    provider.addScope("identify");
-    provider.addScope("email");
-    provider.setCustomParameters({
-      client_id: DISCORD_CLIENT_ID,
-      prompt: "consent",
-    });
-
-    return state.modules.auth.signInWithPopup(state.auth, provider);
+    return state.modules.auth.signInAnonymously(state.auth);
   }
 
   async function signOutUser() {
@@ -122,7 +111,7 @@
       return state.configured;
     },
     loadFirebase,
-    signInWithDiscord,
+    signInAnonymously,
     signOutUser,
     onAuthChanged,
     get db() {
