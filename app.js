@@ -2656,7 +2656,7 @@
 
     if (appState.firebaseReady) {
       if (!appState.currentUser) {
-        throw new Error("Firebaseで保存するには管理者ログインが必要です。");
+        throw new Error("Firebaseで保存するにはDiscordログインが必要です。");
       }
 
       const firebase = window.NarakuFirebase;
